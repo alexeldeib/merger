@@ -1,5 +1,9 @@
+use std::collections::VecDeque;
+use std::ffi::OsString;
 use std::fs::File;
+use std::io::{self, Write};
 use std::path::PathBuf;
+use std::process::Command;
 use clap::{Parser, Subcommand};
 use clap::{arg, command};
 use json_patch::{Patch, from_value};
@@ -27,6 +31,18 @@ enum Commands {
         #[arg(required = true, num_args = 1..)]
         files: Vec<PathBuf>,
     },
+    Retry {
+        #[arg(short, long, required = true, num_args = 1..)]
+        command: Vec<OsString>,
+        #[arg(short, long, required = true)]
+        timeout: Option<u64>,
+        #[arg(short, long, required = true)]
+        retries: Option<u64>,
+        #[arg(short, long, required = true)]
+        wait: Option<u64>,
+        #[arg(short, long)]
+        max_wait: Option<u64>,
+    }
 }
 
 fn main() {
@@ -38,6 +54,9 @@ fn main() {
         },
         Commands::JsonMerge { files } => {
             merge(files);
+        },
+        Commands::Retry { mut command, timeout, retries, wait, max_wait } => {
+           retry(command, timeout, retries, wait, max_wait);
         },
     }
 }
@@ -73,6 +92,26 @@ fn merge(files: Vec<PathBuf>) {
 
     println!("{}", serde_json::to_string_pretty(&base_json).expect("failed to pretty print final result"));
 }
+
+fn retry(command: Vec<OsString>, timeout: Option<u64>, retries: Option<u64>, wait: Option<u64>, max_wait: Option<u64>) {
+    // let command_str = command.into_string().unwrap();
+    let mut args = VecDeque::from(command);
+    let exec = args.pop_front().unwrap();
+    println!("exec: '{:#?}'", exec);
+    println!("args: '{:#?}'", args);
+    let mut cmd = Command::new(exec);
+    for arg in args {
+        cmd.arg(arg);
+    }
+    println!("cmd: '{:#?}'", cmd);
+
+    let output = cmd.output().expect("failed to execute process");
+    println!("status: {}", output.status);
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stderr().write_all(&output.stderr).unwrap();
+}
+
+
     // let matches = command!()
     //     .propagate_version(true)
     //     .subcommand_required(true)
